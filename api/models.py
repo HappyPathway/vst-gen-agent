@@ -123,11 +123,6 @@ class RevalidateSummary(BaseModel):
 # Auth
 # ---------------------------------------------------------------------------
 
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    display_name: str = ""
-
-
 class RegisterResponse(BaseModel):
     api_key: str = Field(
         ..., description="Your API key. Save this — it won't be shown again."
@@ -136,6 +131,7 @@ class RegisterResponse(BaseModel):
 
 
 class UserProfile(BaseModel):
+    github_login: str
     email: str
     display_name: str
     created_at: datetime
@@ -154,3 +150,8 @@ class HealthResponse(BaseModel):
 class ListDevicesResponse(BaseModel):
     devices: list[DeviceMapPublic]
     total: int
+
+
+class StatsResponse(BaseModel):
+    devices: int
+    users: int

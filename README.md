@@ -1,5 +1,9 @@
 # VST Gen Agent
 
+<!-- registry-stats -->
+![Devices indexed](https://img.shields.io/badge/devices_indexed-0-blue)  ![Contributors](https://img.shields.io/badge/contributors-0-green)
+<!-- /registry-stats -->
+
 Generate VST3/AU/Standalone MIDI controller plugins from hardware synthesizer front panels.
 Uses JUCE 8 (primary) or Elementary Audio (web-first). Works with any NRPN/CC device.
 

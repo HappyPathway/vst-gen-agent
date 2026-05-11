@@ -1,0 +1,75 @@
+name: Update README Stats
+
+# Fetches GET /stats from the live registry and updates the badge counts
+# in README.md between the <!-- registry-stats --> markers.
+# Commits back to master only if the numbers changed.
+#
+# Required secrets:
+#   REGISTRY_URL   — Cloud Run service URL (public GET endpoint, no key needed)
+
+on:
+  schedule:
+    - cron: '45 3 * * *'   # 03:45 UTC daily (after revalidation + index rebuild)
+  workflow_dispatch:
+
+jobs:
+  update-badges:
+    name: Refresh device + contributor counts in README
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch stats
+        id: stats
+        run: |
+          RESPONSE=$(curl -sf "${{ secrets.REGISTRY_URL }}/stats")
+          echo "$RESPONSE"
+          DEVICES=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['devices'])")
+          USERS=$(echo "$RESPONSE"   | python3 -c "import sys,json; print(json.load(sys.stdin)['users'])")
+          echo "devices=$DEVICES" >> "$GITHUB_OUTPUT"
+          echo "users=$USERS"     >> "$GITHUB_OUTPUT"
+
+      - name: Update README badges
+        run: |
+          DEVICES=${{ steps.stats.outputs.devices }}
+          USERS=${{ steps.stats.outputs.users }}
+
+          python3 << PYEOF
+          import re, pathlib
+
+          readme = pathlib.Path("README.md").read_text()
+
+          new_block = (
+              "<!-- registry-stats -->\n"
+              f"![Devices indexed](https://img.shields.io/badge/devices_indexed-{$DEVICES}-blue)  "
+              f"![Contributors](https://img.shields.io/badge/contributors-{$USERS}-green)\n"
+              "<!-- /registry-stats -->"
+          )
+
+          updated = re.sub(
+              r"<!-- registry-stats -->.*?<!-- /registry-stats -->",
+              new_block,
+              readme,
+              flags=re.DOTALL,
+          )
+
+          pathlib.Path("README.md").write_text(updated)
+          print(f"Updated badges: devices={$DEVICES} contributors={$USERS}")
+          PYEOF
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --cached --quiet; then
+            echo "Counts unchanged — no commit needed."
+          else
+            git commit -m "docs: update registry stats badges (${{ steps.stats.outputs.devices }} devices, ${{ steps.stats.outputs.users }} contributors) [skip ci]"
+            git push
+          fi

@@ -115,11 +115,27 @@ async def get_user_by_key_hash(key_hash: str) -> dict | None:
     return doc.to_dict() if doc.exists else None
 
 
-async def create_user(key_hash: str, email: str, display_name: str) -> None:
+async def get_user_by_github_id(github_id: int) -> dict | None:
+    """Look up a user by their GitHub numeric user ID (for duplicate registration checks)."""
+    db = get_db()
+    query = db.collection(USERS_COLLECTION).where("github_id", "==", github_id).limit(1)
+    docs = [doc.to_dict() async for doc in query.stream()]
+    return docs[0] if docs else None
+
+
+async def create_user(
+    key_hash: str,
+    github_id: int,
+    github_login: str,
+    email: str,
+    display_name: str = "",
+) -> None:
     db = get_db()
     await db.collection(USERS_COLLECTION).document(key_hash).set({
+        "github_id": github_id,
+        "github_login": github_login,
         "email": email,
-        "display_name": display_name,
+        "display_name": display_name or github_login,
         "created_at": datetime.now(UTC),
         "device_slugs": [],
         "revoked": False,
@@ -131,6 +147,12 @@ async def add_device_to_user(key_hash: str, slug: str) -> None:
     await db.collection(USERS_COLLECTION).document(key_hash).update({
         "device_slugs": firestore.ArrayUnion([slug]),
     })
+
+
+async def count_users() -> int:
+    db = get_db()
+    result = await db.collection(USERS_COLLECTION).where("revoked", "==", False).count().get()
+    return result[0][0].value
 
 
 # ---------------------------------------------------------------------------

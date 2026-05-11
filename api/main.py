@@ -8,8 +8,9 @@ Endpoints:
   POST /devices                — submit a device map (auth required)
   PUT  /devices/{slug}         — update a device map (auth + ownership)
   DELETE /devices/{slug}       — delete a device map (auth + ownership)
-  POST /auth/register          — register email → returns API key
+  POST /auth/register-github   — register via GitHub OAuth → returns API key
   GET  /auth/me                — validate token, return profile
+  GET  /stats                  — device + contributor counts (public)
   POST /admin/revalidate       — re-check all github_repo entries (auth required)
 """
 
@@ -22,17 +23,17 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 import storage
-from auth import generate_api_key, hash_key, require_auth
+from auth import generate_api_key, hash_key, require_auth, require_github_token
 from github_verify import RepoEmptyError, RepoNotPublicError, full_verify, revalidate_repo
 from models import (
     DeviceMapCreate,
     DeviceMapPublic,
     HealthResponse,
     ListDevicesResponse,
-    RegisterRequest,
     RegisterResponse,
     RevalidateSummary,
     RevalidateResult,
+    StatsResponse,
     UserProfile,
 )
 
@@ -67,32 +68,39 @@ async def health():
 # Auth
 # ---------------------------------------------------------------------------
 
-@app.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest):
+@app.post("/auth/register-github", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+async def register_github(
+    gh_user: Annotated[dict, Depends(require_github_token)],
+):
     """
-    Register an email address and receive an API key.
-    The key is returned ONCE — save it immediately.
+    Register using a GitHub OAuth token (read:user + user:email scopes).
+    The token is validated against the GitHub API; identity is bound to the
+    GitHub account — no separate email required.
+    The API key is returned ONCE — save it immediately.
     """
-    raw_key = generate_api_key()
-    key_hash = hash_key(raw_key)
-    # Check for duplicate registration (same email already has a key)
-    # We check by querying Firestore for a matching email
-    db = storage.get_db()
-    existing = db.collection(storage.USERS_COLLECTION).where(
-        "email", "==", body.email
-    ).limit(1)
-    docs = [d async for d in existing.stream()]
-    if docs:
+    existing = await storage.get_user_by_github_id(gh_user["github_id"])
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An API key already exists for this email. Check your `.vst-gen-token` file.",
+            detail=(
+                f"GitHub user '{gh_user['github_login']}' is already registered. "
+                "Check your ~/.vst-gen-token file."
+            ),
         )
-    await storage.create_user(key_hash, body.email, body.display_name)
+    raw_key = generate_api_key()
+    key_hash = hash_key(raw_key)
+    await storage.create_user(
+        key_hash,
+        github_id=gh_user["github_id"],
+        github_login=gh_user["github_login"],
+        email=gh_user["email"],
+    )
     return RegisterResponse(
         api_key=raw_key,
         message=(
+            f"Welcome, {gh_user['github_login']}! "
             "Save this key — it won't be shown again. "
-            "Store it in your vst-gen-agent settings as 'registry.apiKey'."
+            "Store it in ~/.vst-gen-token (chmod 600)."
         ),
     )
 
@@ -100,8 +108,9 @@ async def register(body: RegisterRequest):
 @app.get("/auth/me", response_model=UserProfile)
 async def me(user: Annotated[dict, Depends(require_auth)]):
     return UserProfile(
+        github_login=user.get("github_login", ""),
         email=user["email"],
-        display_name=user.get("display_name", ""),
+        display_name=user.get("display_name", user.get("github_login", "")),
         created_at=user["created_at"],
         device_slugs=user.get("device_slugs", []),
     )
@@ -168,7 +177,6 @@ async def create_device(
     await storage.create_device(body.slug, data, owner_email=user["email"],
                                 panel_warning=panel_warning)
     # Track on user profile
-    key_hash = hash_key(user.get("_raw_key", ""))  # added by require_auth if needed
     await storage.add_device_to_user(user["_key_hash"], body.slug)
     device = await storage.get_device(body.slug)
     return DeviceMapPublic.from_device(device)
@@ -221,6 +229,18 @@ async def delete_device(
             detail="You do not own this device entry.",
         )
     await storage.delete_device(slug)
+
+
+# ---------------------------------------------------------------------------
+# Stats (public)
+# ---------------------------------------------------------------------------
+
+@app.get("/stats", response_model=StatsResponse)
+async def stats():
+    """Return total active device and registered contributor counts."""
+    devices = await storage.count_devices()
+    users = await storage.count_users()
+    return StatsResponse(devices=devices, users=users)
 
 
 # ---------------------------------------------------------------------------
