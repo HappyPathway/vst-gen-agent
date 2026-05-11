@@ -91,39 +91,6 @@ def _request(method: str, path: str, body: dict | None = None,
         sys.exit(f"HTTP {e.code}: {detail}")
 
 
-def _upload_file(path: str, file_path: Path) -> dict:
-    """Multipart file upload using urllib (minimal, no requests)."""
-    import mimetypes
-    import uuid
-
-    url = get_registry_url().rstrip("/") + path
-    api_key = get_api_key()
-
-    boundary = uuid.uuid4().hex
-    mime_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
-    file_bytes = file_path.read_bytes()
-
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{file_path.name}"\r\n'
-        f"Content-Type: {mime_type}\r\n\r\n"
-    ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
-
-    headers = {
-        "Content-Type": f"multipart/form-data; boundary={boundary}",
-        "Accept": "application/json",
-    }
-    if api_key:
-        headers["X-API-Key"] = api_key
-
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        sys.exit(f"HTTP {e.code}: {e.read().decode()}")
-
-
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -193,16 +160,6 @@ def cmd_push(args):
         print(f"  Clone: git clone https://github.com/{resp['github_repo']}")
 
 
-def cmd_upload_panel(args):
-    key = get_api_key()
-    if not key:
-        sys.exit("Not logged in.")
-    panel = Path(args.panel)
-    if not panel.exists():
-        sys.exit(f"File not found: {panel}")
-    resp = _upload_file(f"/devices/{args.slug}/panel", panel)
-    print(f"✓ Panel image uploaded: {resp.get('panel_url')}")
-
 
 def cmd_pull(args):
     """Pull a device map; if a plugin repo is attached, offer to clone it."""
@@ -259,10 +216,6 @@ def main():
                         help="Public GitHub repo containing the generated plugin code")
     p_push.add_argument("--update", action="store_true", help="PUT (update) instead of POST (create)")
 
-    p_panel = sub.add_parser("upload-panel", help="Upload panel.png for a device")
-    p_panel.add_argument("slug")
-    p_panel.add_argument("panel", help="Path to panel.png")
-
     p_pull = sub.add_parser("pull", help="Pull a device map (and optionally clone the plugin repo)")
     p_pull.add_argument("slug")
     p_pull.add_argument("--output", "-o", default="nrpn_map.json")
@@ -279,7 +232,6 @@ def main():
         "list":          cmd_list,
         "get":           cmd_get,
         "push":          cmd_push,
-        "upload-panel":  cmd_upload_panel,
         "pull":          cmd_pull,
         "set-url":       cmd_set_url,
     }[args.command](args)

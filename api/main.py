@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 import storage
@@ -203,26 +203,3 @@ async def delete_device(
             detail="You do not own this device entry.",
         )
     await storage.delete_device(slug)
-
-
-# ---------------------------------------------------------------------------
-# Panel image upload
-# ---------------------------------------------------------------------------
-
-@app.post("/devices/{slug}/panel", status_code=status.HTTP_200_OK)
-async def upload_panel(
-    slug: str,
-    file: UploadFile = File(...),
-    user: Annotated[dict, Depends(require_auth)] = None,
-):
-    """Upload or replace the panel.png for a device."""
-    existing = await storage.get_device_with_owner(slug)
-    if existing is None:
-        raise HTTPException(status_code=404, detail=f"Device '{slug}' not found.")
-    if existing.get("owner_email") != user["email"]:
-        raise HTTPException(status_code=403, detail="You do not own this device entry.")
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files are accepted.")
-    image_bytes = await file.read()
-    url = storage.upload_panel_image(slug, image_bytes, file.content_type)
-    return {"panel_url": url}

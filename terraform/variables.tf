@@ -9,9 +9,3 @@ variable "gcp_region" {
   type        = string
   default     = "us-central1"
 }
-
-variable "registry_bucket" {
-  description = "GCS bucket name for the device registry (panel images, JSON exports)."
-  type        = string
-  default     = "vst-gen-device-registry"
-}

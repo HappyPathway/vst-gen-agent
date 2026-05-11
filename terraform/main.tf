@@ -40,37 +40,6 @@ resource "google_project_service" "firestore" {
 }
 
 # ---------------------------------------------------------------------------
-# GCS — device registry bucket (panel images, JSON exports)
-# ---------------------------------------------------------------------------
-
-resource "google_storage_bucket" "registry" {
-  name                        = var.registry_bucket
-  project                     = var.gcp_project
-  location                    = "US"
-  uniform_bucket_level_access = true
-  force_destroy               = false
-
-  cors {
-    origin          = ["*"]
-    method          = ["GET", "HEAD"]
-    response_header = ["Content-Type"]
-    max_age_seconds = 3600
-  }
-}
-
-# Public read on the panels/ prefix
-resource "google_storage_bucket_iam_member" "public_panels_read" {
-  bucket = google_storage_bucket.registry.name
-  role   = "roles/storage.objectViewer"
-  member = "allUsers"
-
-  condition {
-    title      = "panels-prefix-only"
-    expression = "resource.name.startsWith(\"${var.registry_bucket}/panels/\")"
-  }
-}
-
-# ---------------------------------------------------------------------------
 # Artifact Registry — Docker repo for Cloud Run image
 # ---------------------------------------------------------------------------
 
@@ -100,13 +69,6 @@ resource "google_project_iam_member" "registry_firestore" {
   member  = "serviceAccount:${google_service_account.registry_api.email}"
 }
 
-# GCS objectAdmin on the registry bucket only
-resource "google_storage_bucket_iam_member" "registry_gcs" {
-  bucket = google_storage_bucket.registry.name
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.registry_api.email}"
-}
-
 # ---------------------------------------------------------------------------
 # Cloud Run — VST Gen Device Registry API
 # ---------------------------------------------------------------------------
@@ -123,11 +85,6 @@ resource "google_cloud_run_v2_service" "registry_api" {
       # Image is built and pushed separately via Cloud Build / GitHub Actions.
       # On first apply, push a placeholder or the real image before applying.
       image = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project}/vst-gen/registry-api:latest"
-
-      env {
-        name  = "REGISTRY_BUCKET"
-        value = var.registry_bucket
-      }
 
       resources {
         limits = {

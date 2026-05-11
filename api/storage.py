@@ -1,18 +1,15 @@
-"""Firestore + GCS data access layer for the VST Gen Device Registry."""
+"""Firestore data access layer for the VST Gen Device Registry."""
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import UTC, datetime
 from typing import Any
 
-from google.cloud import firestore, storage
+from google.cloud import firestore
 
 _FIRESTORE_DB: firestore.AsyncClient | None = None
-_GCS_CLIENT: storage.Client | None = None
 
-GCS_BUCKET = os.environ.get("REGISTRY_BUCKET", "vst-gen-device-registry")
 DEVICES_COLLECTION = "vst_gen_devices"
 USERS_COLLECTION = "vst_gen_users"
 
@@ -26,13 +23,6 @@ def get_db() -> firestore.AsyncClient:
     if _FIRESTORE_DB is None:
         _FIRESTORE_DB = firestore.AsyncClient()
     return _FIRESTORE_DB
-
-
-def get_gcs() -> storage.Client:
-    global _GCS_CLIENT
-    if _GCS_CLIENT is None:
-        _GCS_CLIENT = storage.Client()
-    return _GCS_CLIENT
 
 
 # ---------------------------------------------------------------------------
@@ -131,24 +121,3 @@ async def add_device_to_user(key_hash: str, slug: str) -> None:
     await db.collection(USERS_COLLECTION).document(key_hash).update({
         "device_slugs": firestore.ArrayUnion([slug]),
     })
-
-
-# ---------------------------------------------------------------------------
-# GCS — panel image upload / signed URL
-# ---------------------------------------------------------------------------
-
-def upload_panel_image(slug: str, image_bytes: bytes, content_type: str = "image/png") -> str:
-    """Upload panel.png to GCS and return the public URL."""
-    client = get_gcs()
-    bucket = client.bucket(GCS_BUCKET)
-    blob = bucket.blob(f"panels/{slug}/panel.png")
-    blob.upload_from_string(image_bytes, content_type=content_type)
-    blob.make_public()
-    return blob.public_url
-
-
-def get_panel_url(slug: str) -> str | None:
-    client = get_gcs()
-    bucket = client.bucket(GCS_BUCKET)
-    blob = bucket.blob(f"panels/{slug}/panel.png")
-    return blob.public_url if blob.exists() else None

@@ -61,17 +61,26 @@ class DeviceMap(BaseModel):
             return f"https://github.com/{self.github_repo}"
         return None
 
+    @property
+    def panel_url(self) -> Optional[str]:
+        """Raw panel.png URL served directly from the GitHub repo (free CDN)."""
+        if self.github_repo:
+            return f"https://raw.githubusercontent.com/{self.github_repo}/HEAD/panel.png"
+        return None
+
 
 class DeviceMapPublic(DeviceMap):
     """Variant returned to unauthenticated callers — owner is masked."""
     owner: str = ""              # always empty for public responses
     plugin_clone_url: Optional[str] = None
+    panel_url: Optional[str] = None
 
     @classmethod
     def from_device(cls, data: dict) -> "DeviceMapPublic":
         obj = cls(**data)
         if obj.github_repo:
             obj.plugin_clone_url = f"https://github.com/{obj.github_repo}"
+            obj.panel_url = f"https://raw.githubusercontent.com/{obj.github_repo}/HEAD/panel.png"
         return obj
 
 
