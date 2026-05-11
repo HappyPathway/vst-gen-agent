@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import storage
 from auth import generate_api_key, hash_key, require_auth
+from github_verify import RepoNotPublicError, verify_github_repo_string
 from models import (
     DeviceMapCreate,
     DeviceMapPublic,
@@ -114,7 +115,7 @@ async def list_devices(limit: int = 50, offset: int = 0):
     devices = await storage.list_devices(limit=limit, offset=offset)
     total = await storage.count_devices()
     return ListDevicesResponse(
-        devices=[DeviceMapPublic(**d) for d in devices],
+        devices=[DeviceMapPublic.from_device(d) for d in devices],
         total=total,
     )
 
@@ -124,7 +125,7 @@ async def get_device(slug: str):
     device = await storage.get_device(slug)
     if device is None:
         raise HTTPException(status_code=404, detail=f"Device '{slug}' not found.")
-    return DeviceMapPublic(**device)
+    return DeviceMapPublic.from_device(device)
 
 
 # ---------------------------------------------------------------------------
@@ -142,13 +143,22 @@ async def create_device(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Device slug '{body.slug}' already exists. Use PUT to update.",
         )
+    # Verify the GitHub repo is public before indexing
+    if body.github_repo:
+        try:
+            body.github_repo = verify_github_repo_string(body.github_repo)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RepoNotPublicError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail=str(exc)) from exc
     data = body.model_dump()
     await storage.create_device(body.slug, data, owner_email=user["email"])
     # Track on user profile
     key_hash = hash_key(user.get("_raw_key", ""))  # added by require_auth if needed
     await storage.add_device_to_user(user["_key_hash"], body.slug)
     device = await storage.get_device(body.slug)
-    return DeviceMapPublic(**device)
+    return DeviceMapPublic.from_device(device)
 
 
 @app.put("/devices/{slug}", response_model=DeviceMapPublic)
@@ -165,9 +175,18 @@ async def update_device(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not own this device entry.",
         )
+    # Re-verify repo if it changed
+    if body.github_repo:
+        try:
+            body.github_repo = verify_github_repo_string(body.github_repo)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RepoNotPublicError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail=str(exc)) from exc
     await storage.update_device(slug, body.model_dump())
     device = await storage.get_device(slug)
-    return DeviceMapPublic(**device)
+    return DeviceMapPublic.from_device(device)
 
 
 @app.delete("/devices/{slug}", status_code=status.HTTP_204_NO_CONTENT)

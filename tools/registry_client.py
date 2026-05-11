@@ -156,10 +156,11 @@ def cmd_list(args):
     if not devices:
         print("No devices in registry yet.")
         return
-    print(f"{'Slug':<35}  {'Device':<40}  Params")
-    print("-" * 85)
+    print(f"{'Slug':<35}  {'Device':<35}  {'Params':>6}  Repo")
+    print("-" * 100)
     for d in devices:
-        print(f"{d['slug']:<35}  {d['device']:<40}  {len(d.get('params', []))}")
+        repo = d.get("github_repo") or ""
+        print(f"{d['slug']:<35}  {d['device']:<35}  {len(d.get('params', [])):>6}  {repo}")
 
 
 def cmd_get(args):
@@ -181,10 +182,15 @@ def cmd_push(args):
     if not slug:
         sys.exit("Could not determine slug. Use --slug or add 'slug' to the JSON.")
     data["slug"] = slug
+    if args.repo:
+        data["github_repo"] = args.repo
     method = "PUT" if args.update else "POST"
     resp = _request(method, f"/devices/{slug}" if args.update else "/devices",
                     body=data, api_key=key)
-    print(f"✓ {'Updated' if args.update else 'Submitted'}: {resp['slug']} ({resp['device']})")
+    print(f"\u2713 {'Updated' if args.update else 'Submitted'}: {resp['slug']} ({resp['device']})")
+    if resp.get("github_repo"):
+        print(f"  Plugin repo: https://github.com/{resp['github_repo']}")
+        print(f"  Clone: git clone https://github.com/{resp['github_repo']}")
 
 
 def cmd_upload_panel(args):
@@ -199,7 +205,25 @@ def cmd_upload_panel(args):
 
 
 def cmd_pull(args):
-    cmd_get(args)  # pull = get with mandatory --output
+    """Pull a device map; if a plugin repo is attached, offer to clone it."""
+    resp = _request("GET", f"/devices/{args.slug}")
+    output = Path(args.output)
+    output.write_text(json.dumps(resp, indent=2))
+    print(f"Saved NRPN map to {output}")
+    repo = resp.get("github_repo")
+    if repo:
+        clone_url = f"https://github.com/{repo}"
+        print(f"\nThis device has a pre-built plugin repo:")
+        print(f"  {clone_url}")
+        if not args.no_clone:
+            answer = input(f"Clone plugin code into ./{repo.split('/')[-1]}? [Y/n]: ").strip().lower()
+            if answer in ("", "y", "yes"):
+                import subprocess
+                subprocess.run(["git", "clone", clone_url], check=True)
+            else:
+                print(f"Skipped. To clone manually: git clone {clone_url}")
+        else:
+            print(f"To clone: git clone {clone_url}")
 
 
 def cmd_set_url(args):
@@ -231,15 +255,19 @@ def main():
     p_push = sub.add_parser("push", help="Submit or update a device map")
     p_push.add_argument("map", help="Path to nrpn_map.json")
     p_push.add_argument("--slug", help="Override slug (default: from JSON)")
+    p_push.add_argument("--repo", metavar="OWNER/REPO",
+                        help="Public GitHub repo containing the generated plugin code")
     p_push.add_argument("--update", action="store_true", help="PUT (update) instead of POST (create)")
 
     p_panel = sub.add_parser("upload-panel", help="Upload panel.png for a device")
     p_panel.add_argument("slug")
     p_panel.add_argument("panel", help="Path to panel.png")
 
-    p_pull = sub.add_parser("pull", help="Pull a device map to a local file")
+    p_pull = sub.add_parser("pull", help="Pull a device map (and optionally clone the plugin repo)")
     p_pull.add_argument("slug")
     p_pull.add_argument("--output", "-o", default="nrpn_map.json")
+    p_pull.add_argument("--no-clone", action="store_true",
+                        help="Skip the git clone prompt even if a plugin repo is attached")
 
     p_url = sub.add_parser("set-url", help="Configure the registry base URL")
     p_url.add_argument("url", help="e.g. https://vst-gen-registry-xxx-uc.a.run.app")

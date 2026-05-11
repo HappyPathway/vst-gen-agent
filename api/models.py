@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -43,16 +43,36 @@ class DeviceMap(BaseModel):
     midi_channel: int = 1
     notes: list[str] = []
     params: list[NrpnParamEntry]
+    # Optional GitHub plugin repo — must be public, verified at submission time
+    github_repo: Optional[str] = Field(
+        default=None,
+        description="Public GitHub repo storing the generated plugin code, e.g. 'HappyPathway/Take5-VST'",
+    )
     # Metadata set by server
     owner: str = ""              # contributor email (obfuscated in public responses)
     submitted_at: datetime | None = None
     upvotes: int = 0
     version: int = 1
 
+    @property
+    def plugin_clone_url(self) -> Optional[str]:
+        """HTTPS clone URL derived from github_repo, if present."""
+        if self.github_repo:
+            return f"https://github.com/{self.github_repo}"
+        return None
+
 
 class DeviceMapPublic(DeviceMap):
     """Variant returned to unauthenticated callers — owner is masked."""
     owner: str = ""              # always empty for public responses
+    plugin_clone_url: Optional[str] = None
+
+    @classmethod
+    def from_device(cls, data: dict) -> "DeviceMapPublic":
+        obj = cls(**data)
+        if obj.github_repo:
+            obj.plugin_clone_url = f"https://github.com/{obj.github_repo}"
+        return obj
 
 
 class DeviceMapCreate(BaseModel):
@@ -64,6 +84,10 @@ class DeviceMapCreate(BaseModel):
     midi_channel: int = 1
     notes: list[str] = []
     params: list[NrpnParamEntry]
+    github_repo: Optional[str] = Field(
+        default=None,
+        description="Public GitHub repo for the generated plugin, e.g. 'HappyPathway/Take5-VST'",
+    )
 
 
 # ---------------------------------------------------------------------------
