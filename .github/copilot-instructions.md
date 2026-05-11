@@ -7,13 +7,17 @@ generating VST3/AU/Standalone MIDI controller plugins from hardware synthesizer 
 
 | Folder | Purpose |
 |--------|---------|
-| `.github/agents/` | VS Code Copilot custom agent definitions |
+| `.github/agents/` | VS Code Copilot custom agent definition (`vst-gen.agent.md`) |
 | `.github/skills/` | Agent skill files (SKILL.md + supporting scripts) |
-| `.github/prompts/` | Slash-command prompt files (e.g. `/new-device`) |
+| `.github/prompts/` | Slash-command prompt files (`/new-device`, `/login`) |
+| `.github/workflows/` | CI/CD + registry maintenance workflows |
+| `api/` | FastAPI registry service deployed to Cloud Run |
+| `terraform/` | GCP + GitHub infrastructure (WIF, Cloud Run, Scheduler, Actions secrets) |
 | `tools/` | Python CLI tools (midi_capture.py, vision_coords.py, scaffold.py, registry_client.py, seed_registry.py) |
 | `templates/juce/` | JUCE 8 plugin boilerplate templates (`.tmpl` files) |
 | `templates/elementary/` | Elementary Audio plugin boilerplate templates |
 | `devices/` | Generated device-specific plugin projects (git-ignored by default) |
+| `docs/` | Auto-generated docs (device-index.md updated daily by workflow) |
 
 ## Quick Start
 
@@ -44,24 +48,67 @@ python3 tools/scaffold.py \
 cd devices/MyDevice && make run
 
 # 5. Share your capture
-python3 tools/registry_client.py push my_nrpn_map.json
+python3 tools/registry_client.py push my_nrpn_map.json --repo YourOrg/YourPluginRepo
 ```
 
 ## Device Registry
 
-The shared community registry at `https://vst-gen-registry-<hash>-uc.a.run.app` stores pre-captured device maps:
+The shared community registry stores pre-captured device maps. All entries must be backed by
+a **public GitHub repo** — this is enforced at submission and re-verified daily.
 
 ```bash
-python3 tools/registry_client.py list            # browse
-python3 tools/registry_client.py pull <slug>     # download
-python3 tools/registry_client.py login           # register / get API key
-python3 tools/registry_client.py push nrpn.json  # contribute
+python3 tools/registry_client.py list               # browse active devices
+python3 tools/registry_client.py pull <slug>        # download + optional git clone
+python3 tools/registry_client.py login              # GitHub device flow → API key
+python3 tools/registry_client.py push nrpn.json     # contribute (requires login)
 ```
 
-Deploy the registry yourself:
+### Authentication (GitHub device flow)
+
+Registration is bound to a GitHub account — no email form or password:
+
 ```bash
-cd terraform && terraform init -backend-config=gcs.tfbackend && terraform apply
+# Set the OAuth App client ID once (get from the registry operator or README)
+python3 tools/registry_client.py set-github-client-id <CLIENT_ID>
+
+# Login — opens github.com/login/device with a short code
+python3 tools/registry_client.py login
 ```
+
+Scopes granted: `read:user user:email` (read-only). Key saved to `~/.vst-gen-token`.
+
+### Device Staleness
+
+Entries are re-validated daily by Cloud Scheduler. A device is marked `stale` if its
+GitHub repo is deleted or made private after indexing. `GET /devices` filters stale
+entries by default; `GET /devices/{slug}` returns HTTP 410 Gone for stale entries.
+
+## Deploying the Registry
+
+All infrastructure is managed by Terraform. **One-time setup:**
+
+```bash
+cd terraform
+
+# 1. Copy state backend config
+cp gcs.tfbackend.example gcs.tfbackend
+# Set: bucket = "<your-state-bucket>", prefix = "vst-gen-registry"
+
+# 2. Create GitHub OAuth App manually:
+#    https://github.com/organizations/HappyPathway/settings/applications
+#    Name: VST Gen Registry | Homepage: <registry URL> | No callback URL needed
+
+# 3. Apply — sets up Cloud Run, WIF, Scheduler, and all Actions secrets automatically
+terraform init -backend-config=gcs.tfbackend
+TF_VAR_github_token=<PAT with repo scope> \
+TF_VAR_revalidation_api_key=vst_<key> \
+TF_VAR_github_oauth_client_id=<OAuth App client ID> \
+terraform apply
+```
+
+After apply, all GitHub Actions secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER`,
+`GCP_SERVICE_ACCOUNT`, `REGISTRY_URL`, `REGISTRY_API_KEY`) and the
+`GITHUB_OAUTH_CLIENT_ID` variable are set automatically — no manual copy-paste needed.
 
 ## Environment Requirements
 
@@ -80,3 +127,4 @@ The Makefile automatically sets `CPLUS_INCLUDE_PATH` to the SDK path. If you see
 ```bash
 ls /Library/Developer/CommandLineTools/SDKs/
 ```
+
