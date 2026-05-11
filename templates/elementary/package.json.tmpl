@@ -1,0 +1,19 @@
+{
+  "name": "{{CLASS_NAME}}-controller",
+  "version": "0.1.0",
+  "description": "{{DEVICE_NAME}} hardware MIDI controller plugin (Elementary Audio / WebAudio)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "esbuild index.js --bundle --platform=node --outfile=dist/plugin.js"
+  },
+  "dependencies": {
+    "@elemaudio/core": "^3.2.0",
+    "@elemaudio/web-renderer": "^3.2.0",
+    "webmidi": "^3.1.11"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  },
+  "license": "MIT"
+}

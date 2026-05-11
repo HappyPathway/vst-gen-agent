@@ -1,0 +1,11 @@
+devices/
+*.vst3
+*.component
+*.app
+build/
+__pycache__/
+*.pyc
+.DS_Store
+vision_annotated.png
+vision_output.json
+nrpn_map.json

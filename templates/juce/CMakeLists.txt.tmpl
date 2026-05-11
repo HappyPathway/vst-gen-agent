@@ -1,0 +1,63 @@
+cmake_minimum_required(VERSION 3.22)
+project({{CLASS_NAME}}Plugin VERSION 0.1.0)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ── Fetch JUCE 8 ─────────────────────────────────────────────────────────────
+include(FetchContent)
+FetchContent_Declare(
+    JUCE
+    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+    GIT_TAG        8.0.6
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(JUCE)
+
+# ── Plugin target ────────────────────────────────────────────────────────────
+juce_add_plugin({{CLASS_NAME}}Plugin
+    PLUGIN_MANUFACTURER_CODE Hpwy
+    PLUGIN_CODE Gn01
+    FORMATS VST3 AU Standalone
+    PRODUCT_NAME "{{DEVICE_NAME}} Controller"
+    COMPANY_NAME "HappyPathway"
+    BUNDLE_ID "com.happypathway.{{CLASS_NAME}}controller"
+    IS_SYNTH TRUE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT TRUE
+    IS_MIDI_EFFECT FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD FALSE
+)
+
+juce_add_binary_data({{CLASS_NAME}}Assets SOURCES
+    panel.png
+)
+
+target_sources({{CLASS_NAME}}Plugin PRIVATE
+    src/PluginProcessor.cpp
+    src/PluginEditor.cpp
+    src/midi/UsbMidiManager.cpp
+    src/midi/NrpnSender.cpp
+)
+
+target_include_directories({{CLASS_NAME}}Plugin PRIVATE src)
+
+target_compile_definitions({{CLASS_NAME}}Plugin PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+)
+
+target_link_libraries({{CLASS_NAME}}Plugin
+    PRIVATE
+        {{CLASS_NAME}}Assets
+        juce::juce_audio_utils
+        juce::juce_audio_plugin_client
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+)
