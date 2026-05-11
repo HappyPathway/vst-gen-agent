@@ -1,0 +1,108 @@
+{
+  "name": "vst-gen",
+  "displayName": "VST Gen",
+  "description": "Generate VST3/AU/Standalone MIDI controller plugins from hardware synth front panels. @vst-gen chat participant for NRPN capture, panel analysis, and JUCE 8 scaffolding.",
+  "version": "0.1.0",
+  "publisher": "happypathway",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HappyPathway/vst-gen-agent"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "vst",
+    "midi",
+    "synthesizer",
+    "juce",
+    "chat participant",
+    "copilot"
+  ],
+  "icon": "assets/icon.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "vst-gen.agent",
+        "name": "vst-gen",
+        "fullName": "VST Gen",
+        "description": "Generate VST3/AU/Standalone MIDI controller plugins from hardware synth front panels.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "new-device",
+            "description": "Start the guided workflow: registry check → manual extract → MIDI capture → knob coords → JUCE scaffold"
+          },
+          {
+            "name": "login",
+            "description": "Register your GitHub account with the community device registry (device flow)"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "VST Gen",
+      "properties": {
+        "vstGen.registryUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Community registry base URL. Leave blank to use the default HappyPathway registry."
+        },
+        "vstGen.toolsPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a local vst-gen-agent clone containing tools/. Leave blank to use the bundled copies."
+        },
+        "vstGen.outputFolder": {
+          "type": "string",
+          "default": "devices",
+          "description": "Subfolder inside the workspace where generated device projects are placed."
+        },
+        "vstGen.githubClientId": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub OAuth App client ID for the device flow login. Obtain from the registry operator."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "vst-gen.newDevice",
+        "title": "VST Gen: New Device",
+        "category": "VST Gen"
+      },
+      {
+        "command": "vst-gen.login",
+        "title": "VST Gen: Login to Registry",
+        "category": "VST Gen"
+      },
+      {
+        "command": "vst-gen.openSettings",
+        "title": "VST Gen: Open Settings",
+        "category": "VST Gen"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.mjs",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}
