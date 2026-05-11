@@ -27,7 +27,30 @@ Open `nrpn_map.json` and confirm:
 - All front-panel knobs are present
 - `verified: true` on at least the majority of params
 
-### 2. Check if the device already exists
+### 2. Pre-flight: ensure everything is committed and pushed
+
+The registry verifies that the GitHub repo exists, is public, has at least one commit, and that `panel.png` is present. Run these checks before submitting:
+
+```bash
+# 1. No uncommitted changes
+git status --short
+# Expected: empty output. If not, commit first.
+
+# 2. No unpushed commits
+git log origin/$(git rev-parse --abbrev-ref HEAD)..HEAD --oneline
+# Expected: empty output. If not, git push first.
+
+# 3. panel.png is in the repo root
+ls panel.png
+
+# 4. Verify the remote is public (should return HTTP 200, not 404)
+curl -sI https://raw.githubusercontent.com/OWNER/REPO/HEAD/panel.png | head -1
+# Expected: HTTP/2 200
+```
+
+**Do not run `registry_client.py push --repo` until all four checks pass.** The registry will reject submissions where the repo is empty or panel.png is missing.
+
+### 3. Check if the device already exists
 
 ```bash
 python3 tools/registry_client.py list | grep <slug>

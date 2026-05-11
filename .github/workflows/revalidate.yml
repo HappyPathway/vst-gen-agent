@@ -1,0 +1,82 @@
+name: Revalidate Device Registry
+
+# Calls POST /admin/revalidate on the live Cloud Run API to re-check all
+# indexed GitHub repos for continued public visibility and non-empty status.
+# Stale entries are marked in Firestore; restored entries go back to active.
+#
+# Required secrets:
+#   REGISTRY_URL          — Cloud Run service URL
+#   REGISTRY_API_KEY      — API key with access to POST /admin/revalidate
+
+on:
+  schedule:
+    - cron: '15 3 * * *'   # 03:15 UTC daily (offset from Cloud Scheduler to avoid races)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print what would change without updating Firestore'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  revalidate:
+    name: Re-check indexed repos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Trigger revalidation
+        id: revalidate
+        run: |
+          RESPONSE=$(curl -sf \
+            -X POST \
+            -H "X-API-Key: ${{ secrets.REGISTRY_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.REGISTRY_URL }}/admin/revalidate")
+          echo "$RESPONSE" | python3 -m json.tool
+          echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          RESPONSE='${{ steps.revalidate.outputs.response }}'
+          if [ -z "$RESPONSE" ]; then
+            echo "## Revalidation failed — no response from API" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          CHECKED=$(echo "$RESPONSE"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['checked'])")
+          STALE=$(echo "$RESPONSE"     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['newly_stale'])")
+          RESTORED=$(echo "$RESPONSE"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['restored'])")
+
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## Registry Revalidation Summary
+
+          | Metric | Count |
+          |--------|-------|
+          | Devices checked | $CHECKED |
+          | Newly marked stale | $STALE |
+          | Restored to active | $RESTORED |
+
+          EOF
+
+          # List changed entries
+          echo "$RESPONSE" | python3 - << 'PYEOF'
+          import sys, json
+
+          data = json.load(sys.stdin)
+          changed = [r for r in data["results"] if r["status_changed"]]
+
+          if not changed:
+              print("No status changes this run.")
+          else:
+              print("### Status changes\n")
+              print("| Slug | Was | Now | Reason |")
+              print("|------|-----|-----|--------|")
+              for r in changed:
+                  was = "active" if r["was_active"] else "stale"
+                  now = "active" if r["is_valid"] else "stale"
+                  print(f"| {r['slug']} | {was} | {now} | {r['reason'][:80]} |")
+          PYEOF

@@ -114,3 +114,57 @@ resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# ---------------------------------------------------------------------------
+# Cloud Scheduler — periodic revalidation of indexed repos
+# ---------------------------------------------------------------------------
+
+resource "google_project_service" "scheduler" {
+  service            = "cloudscheduler.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Dedicated SA that Cloud Scheduler uses to call the revalidate endpoint.
+# It gets an API key at bootstrap time (store in Secret Manager or as a
+# Cloud Run env var REVALIDATION_API_KEY).
+resource "google_service_account" "scheduler" {
+  account_id   = "vst-gen-scheduler"
+  display_name = "VST Gen Registry — Cloud Scheduler invoker"
+  project      = var.gcp_project
+}
+
+resource "google_cloud_run_v2_service_iam_member" "scheduler_invoker" {
+  project  = var.gcp_project
+  location = var.gcp_region
+  name     = google_cloud_run_v2_service.registry_api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler.email}"
+}
+
+resource "google_cloud_scheduler_job" "revalidate" {
+  name        = "vst-gen-revalidate"
+  description = "Re-check all indexed GitHub repos for continued public visibility"
+  schedule    = "0 3 * * *" # 03:00 UTC daily
+  time_zone   = "UTC"
+  region      = var.gcp_region
+  project     = var.gcp_project
+
+  http_target {
+    http_method = "POST"
+    uri         = "${google_cloud_run_v2_service.registry_api.uri}/admin/revalidate"
+
+    headers = {
+      "X-API-Key" = var.revalidation_api_key
+    }
+
+    oidc_token {
+      service_account_email = google_service_account.scheduler.email
+      audience              = google_cloud_run_v2_service.registry_api.uri
+    }
+  }
+
+  depends_on = [
+    google_project_service.scheduler,
+    google_cloud_run_v2_service_iam_member.scheduler_invoker,
+  ]
+}

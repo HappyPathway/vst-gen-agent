@@ -9,3 +9,9 @@ variable "gcp_region" {
   type        = string
   default     = "us-central1"
 }
+
+variable "revalidation_api_key" {
+  description = "API key used by Cloud Scheduler to call POST /admin/revalidate. Register with `registry_client.py login` and pass via TF_VAR_revalidation_api_key."
+  type        = string
+  sensitive   = true
+}

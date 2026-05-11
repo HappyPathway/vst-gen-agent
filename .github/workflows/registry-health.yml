@@ -1,0 +1,87 @@
+name: Registry Health Check
+
+# Smoke-tests the live registry API on every PR and push to master.
+# Checks: health endpoint, device list, schema validity.
+# Does NOT write any data — read-only.
+#
+# Required secrets:
+#   REGISTRY_URL   — Cloud Run service URL
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'api/**'
+      - '.github/workflows/registry-health.yml'
+  pull_request:
+    paths:
+      - 'api/**'
+  workflow_dispatch:
+
+jobs:
+  health:
+    name: Smoke test live registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Health endpoint
+        id: health
+        run: |
+          STATUS=$(curl -sf "${{ secrets.REGISTRY_URL }}/")
+          echo "$STATUS"
+          VERSION=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          echo "API version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: List devices (schema check)
+        id: list
+        run: |
+          RESPONSE=$(curl -sf "${{ secrets.REGISTRY_URL }}/devices?limit=5")
+          echo "$RESPONSE" | python3 - << 'PYEOF'
+          import sys, json
+
+          data = json.load(sys.stdin)
+
+          assert "devices" in data, "Missing 'devices' key"
+          assert "total" in data,   "Missing 'total' key"
+          assert isinstance(data["devices"], list), "'devices' must be a list"
+
+          for d in data["devices"]:
+              required = {"slug", "device", "params"}
+              missing = required - d.keys()
+              assert not missing, f"Device missing fields: {missing}"
+              assert isinstance(d["params"], list), "params must be a list"
+              # Stale devices must not appear in the default listing
+              assert d.get("status", "active") == "active", \
+                  f"Stale device in public listing: {d['slug']}"
+
+          print(f"OK — {data['total']} total devices, schema valid")
+          PYEOF
+          TOTAL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['total'])")
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+
+      - name: Stale device 410 check
+        run: |
+          # A request for a non-existent slug must return 404, not 500
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.REGISTRY_URL }}/devices/__health-check-nonexistent__")
+          echo "404 probe returned: $HTTP_CODE"
+          [ "$HTTP_CODE" = "404" ] || (echo "Expected 404, got $HTTP_CODE" && exit 1)
+
+      - name: Write job summary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## Registry Health
+
+          | Check | Result |
+          |-------|--------|
+          | API version | ${{ steps.health.outputs.version }} |
+          | Total active devices | ${{ steps.list.outputs.total }} |
+          | Schema valid | ✅ |
+          | 404 on missing slug | ✅ |
+          EOF

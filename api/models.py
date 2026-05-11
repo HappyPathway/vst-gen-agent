@@ -7,6 +7,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
+DeviceStatus = Literal["active", "stale"]
+
 
 # ---------------------------------------------------------------------------
 # NRPN / CC parameter entry
@@ -51,6 +53,9 @@ class DeviceMap(BaseModel):
     # Metadata set by server
     owner: str = ""              # contributor email (obfuscated in public responses)
     submitted_at: datetime | None = None
+    last_validated_at: datetime | None = None
+    status: DeviceStatus = "active"
+    panel_warning: str = ""      # non-empty if panel.png was missing at submission
     upvotes: int = 0
     version: int = 1
 
@@ -97,6 +102,21 @@ class DeviceMapCreate(BaseModel):
         default=None,
         description="Public GitHub repo for the generated plugin, e.g. 'HappyPathway/Take5-VST'",
     )
+
+
+class RevalidateResult(BaseModel):
+    slug: str
+    was_active: bool
+    is_valid: bool
+    reason: str
+    status_changed: bool
+
+
+class RevalidateSummary(BaseModel):
+    checked: int
+    newly_stale: int
+    restored: int
+    results: list[RevalidateResult]
 
 
 # ---------------------------------------------------------------------------
