@@ -1,0 +1,69 @@
+name: Build and Deploy Registry API
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'api/**'
+      - 'terraform/**'
+      - '.github/workflows/deploy-registry.yml'
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT: happypathway-1522441039906
+  GCP_REGION: us-central1
+  IMAGE: us-central1-docker.pkg.dev/happypathway-1522441039906/vst-gen/registry-api
+
+jobs:
+  build-and-push:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # for Workload Identity Federation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      - name: Build and push
+        run: |
+          docker build -t ${{ env.IMAGE }}:${{ github.sha }} \
+                       -t ${{ env.IMAGE }}:latest \
+                       ./api
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+  deploy:
+    name: Update Cloud Run
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: vst-gen-registry
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.IMAGE }}:${{ github.sha }}

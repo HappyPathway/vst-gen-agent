@@ -10,7 +10,7 @@ generating VST3/AU/Standalone MIDI controller plugins from hardware synthesizer 
 | `.github/agents/` | VS Code Copilot custom agent definitions |
 | `.github/skills/` | Agent skill files (SKILL.md + supporting scripts) |
 | `.github/prompts/` | Slash-command prompt files (e.g. `/new-device`) |
-| `tools/` | Python CLI tools (midi_capture.py, vision_coords.py, scaffold.py) |
+| `tools/` | Python CLI tools (midi_capture.py, vision_coords.py, scaffold.py, registry_client.py, seed_registry.py) |
 | `templates/juce/` | JUCE 8 plugin boilerplate templates (`.tmpl` files) |
 | `templates/elementary/` | Elementary Audio plugin boilerplate templates |
 | `devices/` | Generated device-specific plugin projects (git-ignored by default) |
@@ -42,6 +42,25 @@ python3 tools/scaffold.py \
 
 # 4. Build and run
 cd devices/MyDevice && make run
+
+# 5. Share your capture
+python3 tools/registry_client.py push my_nrpn_map.json
+```
+
+## Device Registry
+
+The shared community registry at `https://vst-gen-registry-<hash>-uc.a.run.app` stores pre-captured device maps:
+
+```bash
+python3 tools/registry_client.py list            # browse
+python3 tools/registry_client.py pull <slug>     # download
+python3 tools/registry_client.py login           # register / get API key
+python3 tools/registry_client.py push nrpn.json  # contribute
+```
+
+Deploy the registry yourself:
+```bash
+cd terraform && terraform init -backend-config=gcs.tfbackend && terraform apply
 ```
 
 ## Environment Requirements

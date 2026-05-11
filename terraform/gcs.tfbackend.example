@@ -1,0 +1,5 @@
+# Copy this to gcs.tfbackend and fill in values from the iron-static state bucket.
+# Both iron-static and vst-gen-registry share the same state bucket
+# but use different prefixes.
+bucket = "YOUR_STATE_BUCKET"
+prefix = "vst-gen-registry"

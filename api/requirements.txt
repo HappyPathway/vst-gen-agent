@@ -1,0 +1,5 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic[email]==2.8.2
+google-cloud-firestore==2.19.0
+google-cloud-storage==2.18.2

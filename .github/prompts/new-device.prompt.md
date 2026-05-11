@@ -20,37 +20,62 @@ Ask the user for the following with `vscode_askQuestions`:
 
 Do not proceed until at least device name and panel image are provided.
 
-## Step 2 — Extract parameters
+## Step 2 — Check the community registry
+
+Before any hardware capture, check if this device is already in the registry:
+
+```bash
+python3 tools/registry_client.py get <slug>
+```
+
+If found → pull it, skip to Step 4 (coordinate mapping).
+If not found → continue to Step 3.
+
+## Step 3 — Extract parameters
 
 If a manual is provided, invoke the `extract-params` skill to build a preliminary parameter table.
 If no manual is available, skip to Step 3 and capture directly from hardware.
 
-## Step 3 — Capture NRPN values from hardware
+## Step 4 — Capture NRPN values from hardware
+
+If the registry check (Step 2) returned a device map, skip this step.
+Otherwise, invoke the `midi-capture` skill:
 
 Invoke the `midi-capture` skill:
 - Run `tools/midi_capture.py --capture --device "<device_name>" --output nrpn_map.json`
 - Walk the user through touching each knob
 - Save to `nrpn_map.json`
 
-## Step 4 — Map screenshot coordinates
+## Step 5 — Map screenshot coordinates
 
 Invoke the `vision-to-coords` skill:
 - Run `tools/vision_coords.py --image <panel_image> --scale 0.5 --output vision_output.json`
 - Open `vision_annotated.png` so the user can verify detections
 - Ask user to confirm or correct any missed/false knob positions
 
-## Step 5 — Scaffold the plugin
+## Step 6 — Scaffold the plugin
 
 Invoke the `scaffold-vst` skill:
 - Run `tools/scaffold.py --framework <framework> --map nrpn_map.json --coords vision_output.json --panel <panel_image> --output devices/<DeviceName>/`
 
-## Step 6 — Build and validate
+## Step 7 — Build and validate
 
 ```bash
 cd devices/<DeviceName> && make run
 ```
 
 Report any build errors and fix them. Confirm knob positions look correct in the running plugin.
+
+## Step 8 — Share back to the registry
+
+If the device wasn't already in the registry, use the `share-device` skill:
+
+```bash
+python3 tools/registry_client.py push nrpn_map.json
+python3 tools/registry_client.py upload-panel <slug> panel.png
+```
+
+Ask the user for consent before pushing.
 
 ## Completion checklist
 
