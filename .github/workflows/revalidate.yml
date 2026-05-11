@@ -16,7 +16,7 @@ on:
       dry_run:
         description: 'Print what would change without updating Firestore'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
