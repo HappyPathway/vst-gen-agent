@@ -213,10 +213,9 @@ cd terraform
 cp gcs.tfbackend.example gcs.tfbackend
 # Set: bucket = "<your-state-bucket>", prefix = "vst-gen-registry"
 
-# 2. Create a GitHub OAuth App manually (Terraform cannot do this):
-#    https://github.com/organizations/HappyPathway/settings/applications
-#    Name: VST Gen Registry | Homepage: <your registry URL> | No callback URL
-#    Copy the Client ID (not sensitive)
+# 2. Create a GitHub OAuth App manually (Terraform cannot do this — see the
+#    "Creating the GitHub OAuth App" section in Authentication below).
+#    Copy the Client ID after creation and enabling device flow.
 
 # 3. Register a revalidation API key:
 #    python3 tools/registry_client.py login   (after first deploy)
@@ -278,6 +277,52 @@ python3 tools/registry_client.py login
 ```
 
 Identity is bound to your GitHub account. The API key is issued once — store it safely.
+
+### Creating the GitHub OAuth App
+
+Terraform cannot create OAuth Apps — this one-time step must be done manually in the GitHub UI.
+
+#### For an organization
+
+1. Go to **`https://github.com/organizations/<org>/settings/applications`**
+2. Click **New OAuth App**
+
+#### For a personal account
+
+1. Go to **GitHub → Settings → Developer settings → OAuth Apps**  
+   (`https://github.com/settings/developers`)
+2. Click **New OAuth App**
+
+#### Fill in the registration form
+
+| Field | Value |
+|-------|-------|
+| **Application name** | `VST Gen Registry` (any name) |
+| **Homepage URL** | Your registry URL — use `https://localhost` as a placeholder before the first `terraform apply` |
+| **Application description** | Optional |
+| **Authorization callback URL** | `https://localhost` — device flow never redirects, so this field is unused |
+
+Click **Register application**.
+
+#### Enable device flow
+
+After registration, scroll down on the app settings page to the **"Enable Device Flow"** checkbox and enable it. This is required — the registry client uses the device flow exclusively.
+
+> **Note:** GitHub shows this checkbox only after the app is registered, not during initial creation.
+
+#### Copy the Client ID
+
+The **Client ID** is shown at the top of the app settings page. It is _not_ sensitive (it is public by design). Copy it — you will pass it to:
+
+```bash
+# For registry operators (Terraform)
+TF_VAR_github_oauth_client_id=<client_id> terraform apply
+
+# For end users (registry CLI)
+python3 tools/registry_client.py set-github-client-id <client_id>
+```
+
+Do **not** generate a client secret — the device flow for public clients does not require one.
 
 ---
 

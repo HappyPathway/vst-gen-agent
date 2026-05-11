@@ -87,28 +87,56 @@ entries by default; `GET /devices/{slug}` returns HTTP 410 Gone for stale entrie
 
 All infrastructure is managed by Terraform. **One-time setup:**
 
+### Step 1 — Create the GitHub OAuth App (manual, one-time)
+
+Terraform cannot create OAuth Apps. Do this in the GitHub UI before running `terraform apply`.
+
+**Organization account:**
+```
+https://github.com/organizations/<org>/settings/applications → New OAuth App
+```
+
+**Personal account:**
+```
+https://github.com/settings/developers → New OAuth App
+```
+
+Fill in the form:
+
+| Field | Value |
+|-------|-------|
+| Application name | `VST Gen Registry` |
+| Homepage URL | Use `https://localhost` as a placeholder (update after first apply) |
+| Authorization callback URL | `https://localhost` (device flow never redirects — field is unused) |
+
+After registration:
+1. Scroll to **"Enable Device Flow"** on the app settings page and check it — required for the CLI login flow
+2. Copy the **Client ID** from the top of the page (not sensitive; safe to store as a Terraform variable)
+3. Do **not** generate a client secret — the device flow for public clients does not need one
+
+### Step 2 — Terraform apply
+
 ```bash
 cd terraform
 
-# 1. Copy state backend config
+# Copy and configure GCS state backend
 cp gcs.tfbackend.example gcs.tfbackend
 # Set: bucket = "<your-state-bucket>", prefix = "vst-gen-registry"
 
-# 2. Create GitHub OAuth App manually:
-#    https://github.com/organizations/HappyPathway/settings/applications
-#    Name: VST Gen Registry | Homepage: <registry URL> | No callback URL needed
-
-# 3. Apply — sets up Cloud Run, WIF, Scheduler, and all Actions secrets automatically
+# Apply — sets up Cloud Run, WIF, Scheduler, and all Actions secrets automatically
 terraform init -backend-config=gcs.tfbackend
 TF_VAR_github_token=<PAT with repo scope> \
 TF_VAR_revalidation_api_key=vst_<key> \
-TF_VAR_github_oauth_client_id=<OAuth App client ID> \
+TF_VAR_github_oauth_client_id=<client_id_from_step_1> \
 terraform apply
 ```
 
 After apply, all GitHub Actions secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER`,
 `GCP_SERVICE_ACCOUNT`, `REGISTRY_URL`, `REGISTRY_API_KEY`) and the
 `GITHUB_OAUTH_CLIENT_ID` variable are set automatically — no manual copy-paste needed.
+
+> **After first apply**: Update the OAuth App's Homepage URL in GitHub to the live
+> Cloud Run URL output by Terraform (`terraform output registry_url`).
 
 ## Environment Requirements
 
